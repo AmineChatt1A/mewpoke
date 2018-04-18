@@ -256,19 +256,27 @@ public class CouchbaseMonitor implements AutoCloseable {
         }
 
         final JsonNode remoteClusters = getFromApi("/pools/default/remoteClusters");
+        final Map<String, String> remoteClusterNames = new HashMap<>();
+        for (JsonNode remoteCluster : remoteClusters) {
+            final String name = remoteCluster.findValue("name").asText();
+            final String uuid = remoteCluster.findValue("uuid").asText();
+            remoteClusterNames.put(uuid, name);
+        }
 
         // If a destination was removed, we clear XDCR stats
         xdcrStats.entrySet().removeIf(entry -> !remoteClusters.findValues("name").contains(entry.getKey()));
 
-        for (JsonNode remoteCluster : remoteClusters) {
-            // We assume that XDRC replication are between buckets with the same name.
-            final String remoteClusterName = remoteCluster.findValue("name").asText();
-            final String remoteClusterUuid = remoteCluster.findValue("uuid").asText();
-            final String srcBucketName = this.bucket.name();
-            final String dstBucketName = this.bucket.name();
-            final String prefix = "replications/" + remoteClusterUuid + "/" + srcBucketName + "/" + dstBucketName + "/";
-            final int prefixLen = prefix.length();
+        final JsonNode tasks = getFromApi("/pools/default/tasks");
 
+        for (JsonNode task : tasks) {
+            if ( !task.findValue("type").asText().equals("xdcr"))
+                continue;
+
+            final String id = task.findValue("id").asText();
+            final String[] idspl = id.split("/");
+            final String remoteClusterName = remoteClusterNames.get(idspl[0]);
+            final String dstbucket = idspl[2];
+            final String prefix = "replications/" + id + "/";
 
             final Map<String, Double> statsMap = new HashMap<>();
 
@@ -277,7 +285,8 @@ public class CouchbaseMonitor implements AutoCloseable {
                 final Map.Entry<String, JsonNode> field = fields.next();
                 final String key = field.getKey();
                 if (key.startsWith(prefix)) {
-                    final String statName = key.substring(prefixLen);
+                    final String statName = key.substring(prefix.length());
+
                     // We extract only configured stats. If undefined, we extract ALL stats.
                     // TODO: I would prefer empty list as default. And allow pattern matching to configure ALL easily (**)
                     if (xdcrStatsNames == null || xdcrStatsNames.contains(statName)) {
@@ -285,13 +294,13 @@ public class CouchbaseMonitor implements AutoCloseable {
                             final double value = field.getValue().get(0).asDouble();
                             statsMap.put(statName, value);
                         } catch (Exception e) {
-                            logger.error("Cannot fetch XDCR stat {} for bucket {}.", field.getKey(), srcBucketName, e);
+                            logger.error("Cannot fetch XDCR stat {} for replication {}.", field.getKey(), id, e);
                         }
                     }
                 }
             }
 
-            xdcrStats.put(remoteClusterName, statsMap);
+            xdcrStats.put(remoteClusterName + " " +  dstbucket, statsMap);
         }
 
         return xdcrStatsFrozen;

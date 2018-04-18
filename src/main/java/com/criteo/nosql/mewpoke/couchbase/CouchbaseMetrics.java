@@ -47,7 +47,7 @@ public class CouchbaseMetrics implements AutoCloseable {
     private static final Gauge XDCR = Gauge.build()
             .name("couchbase_xdcr")
             .help("Cluster API Stats XDCR")
-            .labelNames("cluster", "bucket", "remotecluster", "name")
+            .labelNames("cluster", "srcbucket", "dstbucket", "remotecluster", "name")
             .register();
 
     private final String clusterName;
@@ -95,9 +95,12 @@ public class CouchbaseMetrics implements AutoCloseable {
     }
 
     public void updatecollectApiStatsBucketXdcr(final Map<String, Map<String, Double>> nodesXdcrStats) {
-        nodesXdcrStats.forEach((remotecluster, stats) -> {
+        nodesXdcrStats.forEach((id, stats) -> {
+            final String[] idspl = id.split(" ");
+            final String remotecluster = idspl[0];
+            final String dstbucket = idspl[1];
             stats.forEach((statname, statvalue) -> {
-                XDCR.labels(clusterName, bucketName, remotecluster, statname)
+                XDCR.labels(clusterName, bucketName, dstbucket, remotecluster, statname)
                         .set(statvalue);
             });
         });
