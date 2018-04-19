@@ -9,6 +9,7 @@ import com.couchbase.client.core.node.Node;
 import com.couchbase.client.core.retry.FailFastRetryStrategy;
 import com.couchbase.client.core.state.LifecycleState;
 import com.couchbase.client.java.Bucket;
+import com.couchbase.client.java.Cluster;
 import com.couchbase.client.java.CouchbaseCluster;
 import com.couchbase.client.java.PersistTo;
 import com.couchbase.client.java.ReplicateTo;
@@ -46,7 +47,7 @@ public class CouchbaseMonitor implements AutoCloseable {
 
     private final String serviceName;
 
-    private final CouchbaseCluster client;
+    private final Cluster client;
     private final Bucket bucket;
     private final int httpDirectPort;
     private final long timeoutInMs;
@@ -72,7 +73,7 @@ public class CouchbaseMonitor implements AutoCloseable {
     private final Field nodesGetter;
     private final ArrayList<JsonDocument> docs;
 
-    private CouchbaseMonitor(String serviceName, CouchbaseCluster client, Bucket bucket, int httpDirectPort, long timeoutInMs, String username, String password, List<String> bucketStatsNames, List<String> xdcrStatsNames) throws NoSuchFieldException, IllegalAccessException {
+    private CouchbaseMonitor(String serviceName, Cluster client, Bucket bucket, int httpDirectPort, long timeoutInMs, String username, String password, List<String> bucketStatsNames, List<String> xdcrStatsNames) throws NoSuchFieldException, IllegalAccessException {
         this.serviceName = serviceName;
         this.client = client;
         this.bucket = bucket;
@@ -122,7 +123,6 @@ public class CouchbaseMonitor implements AutoCloseable {
             return Optional.empty();
         }
 
-        final String bucketpassword = config.getService().getBucketpassword();
         final long timeoutInMs = config.getService().getTimeoutInSec() * 1000L;
         final String username = config.getService().getUsername();
         final String password = config.getService().getPassword();
@@ -132,13 +132,14 @@ public class CouchbaseMonitor implements AutoCloseable {
         final List<String> xdcrStatsNames = (config.getCouchbaseStats() != null ? config.getCouchbaseStats().getXdcr()
             : null);
 
-        CouchbaseCluster client = null;
+        Cluster client = null;
         Bucket bucket = null;
         try {
             final CouchbaseEnvironment env = couchbaseEnv.updateAndGet(e -> e == null ? DefaultCouchbaseEnvironment.builder().retryStrategy(FailFastRetryStrategy.INSTANCE).build() : e);
             final int httpDirectPort = env.bootstrapHttpDirectPort();
             client = CouchbaseCluster.create(env, endPoints.stream().map(e -> e.getHostString()).collect(Collectors.toList()));
-            bucket = client.openBucket(bucketName, bucketpassword);
+            client.authenticate(username, password);
+            bucket = client.openBucket(bucketName);
             return Optional.of(new CouchbaseMonitor(bucketName, client, bucket, httpDirectPort, timeoutInMs, username, password, bucketStatsNames, xdcrStatsNames));
         } catch (Exception e) {
             logger.error("Cannot create couchbase client for {}", bucketName, e);

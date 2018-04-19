@@ -23,6 +23,9 @@ curl -v -u Administrator:password -X POST http://127.0.0.1:8091/sampleBuckets/in
 # Activate dedicated port for bucket travel-sample
 curl -v -u Administrator:password -X POST http://127.0.0.1:8091/pools/default/buckets/travel-sample -d 'proxyPort=11220' -d 'authType=none'
 
+# create dedicated user for prometheus exporters
+curl -v -u Administrator:password -X PUT http://127.0.0.1:8091/settings/rbac/users/local/prometheus -d 'roles=cluster_admin&name=prometheus&password=password'
+
 echo "Type: $TYPE"
 
 if [ "$TYPE" = "WORKER" ]; then

@@ -2,7 +2,8 @@ version: "2"
 services:
   couchbase:
     container_name: couchbase01
-    image: arungupta/couchbase
+    image: couchbase
+    command: /opt/couchbase/configure-node.sh
     volumes:
       # Override couchbase script to handle bucket creation
       - ./couchbase/config/configure-node.sh:/opt/couchbase/configure-node.sh

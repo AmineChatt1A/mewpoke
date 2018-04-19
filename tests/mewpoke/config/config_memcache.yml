@@ -11,7 +11,7 @@ discovery:
 service:
   type: MEMCACHED
   timeoutInSec: 60
-  username: Administrator
+  username: prometheus
   password: password
 
 couchbaseStats:
