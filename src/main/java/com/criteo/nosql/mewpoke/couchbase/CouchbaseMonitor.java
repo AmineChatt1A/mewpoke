@@ -54,26 +54,21 @@ public class CouchbaseMonitor implements AutoCloseable {
     private final ClusterManager clusterManager;
     private final List<String> bucketStatsNames;
     private final List<String> xdcrStatsNames;
+    private final List<String> queryStatsNames;
 
     // To avoid too many allocation at each iteration we allocate buffers upfront
-    // but as we share results with external world we have to guard against
-    // someone mutating our internal buffers, so we freeze the map in order to share them safely
     private final Map<InetSocketAddress, Long> setLatencies;
-    private final Map<InetSocketAddress, Long> setLatenciesFrozen;
     private final Map<InetSocketAddress, Boolean> availability;
-    private final Map<InetSocketAddress, Boolean> availabilityFrozen;
     private final Map<InetSocketAddress, String> nodesMembership;
-    private final Map<InetSocketAddress, String> nodesMembershipFrozen;
     private final Map<InetSocketAddress, Map<String, Double>> nodesApiStats;
-    private final Map<InetSocketAddress, Map<String, Double>> nodesApiStatsFrozen;
     private final Map<String, Map<String, Double>> xdcrStats;
-    private final Map<String, Map<String, Double>> xdcrStatsFrozen;
+    private final Map<String, Double> queryStats;
 
     private final RequestHandler requestHandler;
     private final Field nodesGetter;
     private final ArrayList<JsonDocument> docs;
 
-    private CouchbaseMonitor(String serviceName, Cluster client, Bucket bucket, int httpDirectPort, long timeoutInMs, String username, String password, List<String> bucketStatsNames, List<String> xdcrStatsNames) throws NoSuchFieldException, IllegalAccessException {
+    private CouchbaseMonitor(String serviceName, Cluster client, Bucket bucket, int httpDirectPort, long timeoutInMs, String username, String password, List<String> bucketStatsNames, List<String> xdcrStatsNames, List<String> queryStatsNames) throws NoSuchFieldException, IllegalAccessException {
         this.serviceName = serviceName;
         this.client = client;
         this.bucket = bucket;
@@ -82,6 +77,7 @@ public class CouchbaseMonitor implements AutoCloseable {
         this.clusterManager = client.clusterManager(username, password);
         this.bucketStatsNames = bucketStatsNames;
         this.xdcrStatsNames = xdcrStatsNames;
+        this.queryStatsNames = queryStatsNames;
 
         final CouchbaseCore c = ((CouchbaseCore) bucket.core());
         final Field f = c.getClass().getDeclaredField("requestHandler");
@@ -95,11 +91,7 @@ public class CouchbaseMonitor implements AutoCloseable {
         this.nodesMembership = new HashMap<>(getNodes().size());
         this.nodesApiStats = new HashMap<>(getNodes().size());
         this.xdcrStats = new HashMap<>();
-        this.setLatenciesFrozen = Collections.unmodifiableMap(this.setLatencies);
-        this.availabilityFrozen = Collections.unmodifiableMap(this.availability);
-        this.nodesMembershipFrozen = Collections.unmodifiableMap(this.nodesMembership);
-        this.nodesApiStatsFrozen = Collections.unmodifiableMap(this.nodesApiStats);
-        this.xdcrStatsFrozen = Collections.unmodifiableMap(this.xdcrStats);
+        this.queryStats = new HashMap<>();
 
         // Generate requests that will spread on every nodes
         final NodeLocatorHelper locator = NodeLocatorHelper.create(bucket);
@@ -131,6 +123,8 @@ public class CouchbaseMonitor implements AutoCloseable {
             : null);
         final List<String> xdcrStatsNames = (config.getCouchbaseStats() != null ? config.getCouchbaseStats().getXdcr()
             : null);
+        final List<String> queryStatsNames = (config.getCouchbaseStats() != null ? config.getCouchbaseStats().getQuery()
+            : null);
 
         Cluster client = null;
         Bucket bucket = null;
@@ -140,7 +134,7 @@ public class CouchbaseMonitor implements AutoCloseable {
             client = CouchbaseCluster.create(env, endPoints.stream().map(e -> e.getHostString()).collect(Collectors.toList()));
             client.authenticate(username, password);
             bucket = client.openBucket(bucketName);
-            return Optional.of(new CouchbaseMonitor(bucketName, client, bucket, httpDirectPort, timeoutInMs, username, password, bucketStatsNames, xdcrStatsNames));
+            return Optional.of(new CouchbaseMonitor(bucketName, client, bucket, httpDirectPort, timeoutInMs, username, password, bucketStatsNames, xdcrStatsNames, queryStatsNames));
         } catch (Exception e) {
             logger.error("Cannot create couchbase client for {}", bucketName, e);
             if (client != null) client.disconnect();
@@ -175,7 +169,7 @@ public class CouchbaseMonitor implements AutoCloseable {
                 nodesMembership.put(new InetSocketAddress(hostname.substring(0, hostname.indexOf(':')), 8091), node.getString("clusterMembership"));
             });
 
-            return nodesMembershipFrozen;
+            return Collections.unmodifiableMap(nodesMembership);
         } catch (Exception e) {
             logger.error("Got an invalid JSON from the couchbase API for {} on membership", serviceName, e);
             return Collections.emptyMap();
@@ -245,7 +239,7 @@ public class CouchbaseMonitor implements AutoCloseable {
 
             nodesApiStats.put(nodeToInetAddress(n), statsMap);
         }
-        return nodesApiStatsFrozen;
+        return Collections.unmodifiableMap(nodesApiStats);
     }
 
     public Map<String, Map<String, Double>> collectApiStatsBucketXdcr() {
@@ -304,14 +298,33 @@ public class CouchbaseMonitor implements AutoCloseable {
             xdcrStats.put(remoteClusterName + " " +  dstbucket, statsMap);
         }
 
-        return xdcrStatsFrozen;
+        return Collections.unmodifiableMap(xdcrStats);
+    }
+
+    public Map<String, Double> collectApiStatsQuery() {
+        logger.info("collect query stat N1ql.");
+        final String uri = "/pools/default/buckets/@query/stats";
+        final JsonNode qstat = getFromApi(uri).findValue("samples");
+
+        final Iterator<Map.Entry<String, JsonNode>> fields = qstat.fields();
+
+        while(fields.hasNext()) {
+            final Map.Entry<String, JsonNode> field = fields.next();
+            final String statName = field.getKey();
+            if (!statName.equals("timestamp") && (queryStatsNames == null || queryStatsNames.contains(statName))) {
+                final double value = field.getValue().get(0).asDouble();
+                queryStats.put(statName, value);
+            }
+        }
+
+        return Collections.unmodifiableMap(queryStats);
     }
 
     public Map<InetSocketAddress, Boolean> collectAvailability() {
         for (Node n : getNodes()) {
             availability.put(nodeToInetAddress(n), n.state() == LifecycleState.CONNECTED);
         }
-        return availabilityFrozen;
+        return Collections.unmodifiableMap(availability);
     }
 
     public Map<InetSocketAddress, Long> collectLatencies(PersistTo persistTo, ReplicateTo replicateTo) {
@@ -333,7 +346,7 @@ public class CouchbaseMonitor implements AutoCloseable {
                 .toBlocking()
                 .firstOrDefault(null);
 
-        return setLatenciesFrozen;
+        return Collections.unmodifiableMap(setLatencies);
     }
 
     public Map<InetSocketAddress, Long> collectPersistToDiskLatencies() {

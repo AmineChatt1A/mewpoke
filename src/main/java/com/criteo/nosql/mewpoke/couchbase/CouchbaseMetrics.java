@@ -50,6 +50,12 @@ public class CouchbaseMetrics implements AutoCloseable {
             .labelNames("cluster", "srcbucket", "dstbucket", "remotecluster", "name")
             .register();
 
+    private static final Gauge QUERY = Gauge.build()
+            .name("couchbase_query")
+            .help("Cluster API Stats QUERY N1QL")
+        .labelNames("cluster", "name")
+            .register();
+
     private final String clusterName;
     private final String bucketName;
 
@@ -106,6 +112,12 @@ public class CouchbaseMetrics implements AutoCloseable {
         });
     }
 
+    public void updatecollectApiStatsQuery(final Map<String, Double> queryStats) {
+        queryStats.forEach((statname, statvalue) -> {
+            QUERY.labels(clusterName, statname).set(statvalue);
+        });
+    }
+
     @Override
     public void close() {
         // FIXME we should remove only metrics with the labels cluster=clustername, bucket=bucketName
@@ -115,5 +127,6 @@ public class CouchbaseMetrics implements AutoCloseable {
         MEMBERSHIP.clear();
         STATS.clear();
         XDCR.clear();
+        QUERY.clear();
     }
 }

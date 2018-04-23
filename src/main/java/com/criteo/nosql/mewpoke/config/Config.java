@@ -49,6 +49,7 @@ public final class Config {
     public class CouchbaseStats {
         private List<String> bucket;
         private List<String> xdcr;
+        private List<String> query;
 
         public List<String> getBucket() {
             return bucket;
@@ -56,6 +57,10 @@ public final class Config {
 
         public List<String> getXdcr() {
             return xdcr;
+        }
+
+        public List<String> getQuery() {
+            return query;
         }
     }
 
@@ -118,7 +123,6 @@ public final class Config {
         private long timeoutInSec;
         private String username;
         private String password;
-        private String bucketpassword;
 
         public String getType() {
             return type;
@@ -134,10 +138,6 @@ public final class Config {
 
         public String getPassword() {
             return password;
-        }
-
-        public String getBucketpassword() {
-            return bucketpassword;
         }
     }
 }

@@ -15,5 +15,6 @@ service:
   password: password
 
 couchbaseStats:
-  bucket: # API : /pools/default/buckets/MYBUCKET/nodes/MYNODE:PORT/stats
+  bucket: # API: /pools/default/buckets/MYBUCKET/nodes/MYNODE:PORT/stats
   xdcr: # API: replications/XDCR_UUID/MYBUCKET_SOURCE/MYBUCKET_DESTINATION/
+  query: # API: /pools/default/buckets/@query/stats

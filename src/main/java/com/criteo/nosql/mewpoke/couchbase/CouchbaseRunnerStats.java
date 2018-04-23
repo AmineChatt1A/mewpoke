@@ -19,6 +19,7 @@ public class CouchbaseRunnerStats extends CouchbaseRunnerAbstract {
             metric.updateMembership(monitor.map(CouchbaseMonitor::collectMembership).orElse(Collections.emptyMap()));
             metric.updatecollectApiStatsBucket(monitor.map(CouchbaseMonitor::collectApiStatsBucket).orElse(Collections.emptyMap()));
             metric.updatecollectApiStatsBucketXdcr(monitor.map(CouchbaseMonitor::collectApiStatsBucketXdcr).orElse(Collections.emptyMap()));
+            metric.updatecollectApiStatsQuery(monitor.map(CouchbaseMonitor::collectApiStatsQuery).orElse(Collections.emptyMap()));
         });
     }
 }
